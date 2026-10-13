@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEEP SPACE OUTPOST: Kepler-9 | Terminal Interface</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --terminal-cyan: #00f3ff;
+      --terminal-amber: #ffaa00;
+      --terminal-crimson: #ff3355;
+      --terminal-emerald: #00ff88;
+      --terminal-bg: #05080f;
+    }
+
+    body {
+      background-color: var(--terminal-bg);
+      font-family: 'Fira Code', monospace;
+      color: #b0c6df;
+      overflow-x: hidden;
+    }
+
+    .font-hud {
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    /* CRT Scanline & Phosphor Flicker effect */
+    .crt::before {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%), 
+                  linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      z-index: 40;
+      background-size: 100% 3px, 4px 100%;
+      pointer-events: none;
+      opacity: 0.75;
+    }
+
+    .crt-glow {
+      box-shadow: inset 0 0 40px rgba(0, 243, 255, 0.05), 0 0 15px rgba(0, 243, 255, 0.15);
+    }
+
+    .text-glow-cyan {
+      text-shadow: 0 0 8px rgba(0, 243, 255, 0.7);
+    }
+
+    .text-glow-amber {
+      text-shadow: 0 0 8px rgba(255, 170, 0, 0.7);
+    }
+
+    .text-glow-red {
+      text-shadow: 0 0 8px rgba(255, 51, 85, 0.7);
+    }
+
+    /* Custom Terminal Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #080d1a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #172c47;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00f3ff;
+    }
+
+    .border-cyber {
+      border-color: rgba(0, 243, 255, 0.3);
+      position: relative;
+    }
+    .border-cyber::after {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 8px; height: 8px;
+      border-top: 2px solid #00f3ff;
+      border-right: 2px solid #00f3ff;
+    }
+
+    @keyframes radar-sweep {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-radar {
+      animation: radar-sweep 4s linear infinite;
+    }
+
+    @keyframes pulse-alarm {
+      0%, 100% { border-color: rgba(255, 51, 85, 0.4); box-shadow: 0 0 10px rgba(255, 51, 85, 0.2); }
+      50% { border-color: rgba(255, 51, 85, 0.9); box-shadow: 0 0 25px rgba(255, 51, 85, 0.6); }
+    }
+    .alarm-glow {
+      animation: pulse-alarm 1.8s infinite ease-in-out;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen relative crt flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
+
+  <!-- TOP HUD BAR -->
+  <header class="w-full bg-[#090f1d]/90 border-b border-cyan-900/60 backdrop-blur px-4 py-2.5 flex flex-wrap items-center justify-between z-30 sticky top-0 shadow-lg">
+    <div class="flex items-center space-x-3">
+      <div class="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+      <div>
+        <h1 class="font-hud text-sm sm:text-base font-bold tracking-wider text-cyan-400 text-glow-cyan">
+          KEPLER-9 // REMOTE ASTRO-TERMINAL
+        </h1>
+        <p class="text-[10px] text-cyan-200/50 uppercase tracking-widest">Orbital Salvage Sub-Deck • Sector 04-G</p>
+      </div>
+    </div>
+
+    <!-- Telemetry status pills -->
+    <div class="flex items-center gap-3 text-xs mt-2 sm:mt-0">
+      <div class="hidden md:flex items-center px-2.5 py-1 rounded bg-[#0b162a] border border-cyan-800/40 text-cyan-300">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2"></span>
+        <span>LINK: <strong class="text-white">QUANTUM-RELAY</strong></span>
+      </div>
+
+      <div class="flex items-center px-2.5 py-1 rounded bg-[#0b162a] border border-cyan-800/40 text-amber-300">
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-2 animate-pulse"></span>
+        <span>GW FIELD: <strong class="text-white" id="gw-value">4.21 Hz</strong></span>
+      </div>
+
+      <!-- Audio Mute/Unmute Toggle -->
+      <button id="btn-audio" class="px-2.5 py-1 rounded bg-[#0e1a33] hover:bg-cyan-950 border border-cyan-500/40 text-cyan-300 transition-all flex items-center space-x-1.5 cursor-pointer">
+        <span id="audio-icon">🔊</span>
+        <span id="audio-label" class="font-bold">SFX ON</span>
+      </button>
+
+      <!-- Restart Terminal -->
+      <button id="btn-restart-top" class="px-2.5 py-1 rounded bg-red-950/40 hover:bg-red-900/60 border border-red-700/50 text-red-300 transition-all text-xs font-semibold">
+        RESET
+      </button>
+    </div>
+  </header>
+
+  <main class="w-full max-w-7xl mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 flex-grow z-20">
+
+    <!-- LEFT SIDEBAR: VITALS, INVENTORY & SCANNER (4 cols) -->
+    <aside class="lg:col-span-4 flex flex-col gap-4">
+
+      <!-- VITALS CARD -->
+      <div class="bg-[#080d19]/80 border border-cyber p-4 rounded-lg crt-glow shadow-md">
+        <h2 class="font-hud text-xs font-bold text-cyan-400 tracking-wider mb-3 flex items-center justify-between border-b border-cyan-900/40 pb-1.5">
+          <span>SUIT & INTEGRITY TELEMETRY</span>
+          <span class="text-[10px] text-cyan-500/70">UNIT-A3</span>
+        </h2>
+
+        <!-- Health/Hull Integrity -->
+        <div class="mb-3">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-gray-400">PHYSICAL VITALS</span>
+            <span id="stat-health-txt" class="text-emerald-400 font-bold">100%</span>
+          </div>
+          <div class="w-full h-2 bg-gray-900 rounded overflow-hidden p-[1px] border border-cyan-950">
+            <div id="stat-health-bar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded transition-all duration-500" style="width: 100%;"></div>
+          </div>
+        </div>
+
+        <!-- Shielding -->
+        <div class="mb-3">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-gray-400">GRAV-SHIELD EMITTER</span>
+            <span id="stat-shields-txt" class="text-cyan-400 font-bold">100%</span>
+          </div>
+          <div class="w-full h-2 bg-gray-900 rounded overflow-hidden p-[1px] border border-cyan-950">
+            <div id="stat-shields-bar" class="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded transition-all duration-500" style="width: 100%;"></div>
+          </div>
+        </div>
+
+        <!-- Oxygen Reserve -->
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-gray-400">O2 TANK PRESSURE</span>
+            <span id="stat-o2-txt" class="text-amber-400 font-bold">95%</span>
+          </div>
+          <div class="w-full h-2 bg-gray-900 rounded overflow-hidden p-[1px] border border-cyan-950">
+            <div id="stat-o2-bar" class="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded transition-all duration-500" style="width: 95%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MISSION DIRECTIVE CARD -->
+      <div class="bg-[#080d19]/80 border border-cyber p-3.5 rounded-lg">
+        <h3 class="font-hud text-[11px] font-bold text-amber-400 tracking-wider mb-1 flex items-center">
+          <span class="inline-block w-2 h-2 bg-amber-400 mr-2 rounded-sm animate-pulse"></span>
+          CURRENT PROTOCOL OBJECTIVE
+        </h3>
+        <p id="mission-objective" class="text-xs text-amber-200/90 leading-relaxed font-sans">
+          Dock shuttle, access central terminal, and isolate source of anomalous gravity distortions.
+        </p>
+      </div>
+
+      <!-- INVENTORY COMPARTMENT -->
+      <div class="bg-[#080d19]/80 border border-cyber p-4 rounded-lg">
+        <h2 class="font-hud text-xs font-bold text-cyan-400 tracking-wider mb-2.5 flex items-center justify-between border-b border-cyan-900/40 pb-1.5">
+          <span>HARDWARE INVENTORY</span>
+          <span id="inv-count" class="text-[10px] text-cyan-400 font-mono">1/4 SLOTS</span>
+        </h2>
+        <div id="inventory-grid" class="grid grid-cols-2 gap-2 text-xs">
+          <!-- Dynamically filled with inventory items -->
+        </div>
+      </div>
+
+      <!-- RADAR & ANOMALY SCANNER CANVAS -->
+      <div class="bg-[#080d19]/80 border border-cyber p-4 rounded-lg flex flex-col items-center">
+        <div class="w-full flex justify-between items-center text-[10px] text-cyan-400 mb-2 font-hud">
+          <span>SUBSPACE RADAR</span>
+          <span class="animate-pulse text-emerald-400">SCANNING...</span>
+        </div>
+        <div class="relative w-48 h-48 border border-cyan-500/30 rounded-full flex items-center justify-center overflow-hidden bg-[#040811]">
+          <!-- Canvas for animated blips and sweeps -->
+          <canvas id="radarCanvas" width="192" height="192" class="w-full h-full"></canvas>
+          <div class="absolute inset-0 rounded-full border border-cyan-500/10 pointer-events-none"></div>
+          <div class="absolute inset-8 rounded-full border border-dashed border-cyan-500/20 pointer-events-none"></div>
+          <div class="absolute inset-16 rounded-full border border-cyan-500/20 pointer-events-none"></div>
+          <div class="absolute w-full h-[1px] bg-cyan-500/20 pointer-events-none"></div>
+          <div class="absolute h-full w-[1px] bg-cyan-500/20 pointer-events-none"></div>
+        </div>
+        <div class="text-[10px] text-gray-500 mt-2 font-mono flex justify-between w-full">
+          <span>SINGULARITY: T-MINUS LOCK</span>
+          <span id="radar-distance" class="text-cyan-400 font-bold">14.8m</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT TERMINAL: STORY CONSOLE & ACTIONS (8 cols) -->
+    <section class="lg:col-span-8 flex flex-col gap-4">
+
+      <!-- MAIN STORY CONSOLE -->
+      <div class="bg-[#080d19]/90 border border-cyber p-4 sm:p-6 rounded-lg crt-glow shadow-xl flex flex-col min-h-[460px] relative justify-between">
+        
+        <!-- Terminal Header -->
+        <div class="flex items-center justify-between border-b border-cyan-900/60 pb-3 mb-4">
+          <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+            <span id="scene-location" class="font-hud text-sm font-bold text-cyan-300 tracking-wider">
+              SECTION 01: OUTPOST AIRLOCK
+            </span>
+          </div>
+          <div class="text-xs font-mono text-cyan-500/80" id="terminal-timestamp">
+            STARDATE 2188.291
+          </div>
+        </div>
+
+        <!-- Story Output Text Area -->
+        <div id="story-container" class="flex-grow flex flex-col justify-start mb-6">
+          <div id="story-text" class="text-sm sm:text-base leading-relaxed text-gray-200 font-normal whitespace-pre-line tracking-wide">
+            <!-- Typewriter output streams here -->
+          </div>
+          <!-- Blinking Cursor -->
+          <span id="cursor-blink" class="inline-block w-2.5 h-4 bg-cyan-400 ml-1 mt-1 animate-pulse"></span>
+        </div>
+
+        <!-- Tactical Visual Clue Box -->
+        <div id="tactical-banner" class="hidden mb-4 p-3 bg-cyan-950/30 border-l-4 border-cyan-400 text-xs text-cyan-200 rounded">
+          <span class="font-bold text-cyan-300 uppercase tracking-widest font-hud">Analysis Note:</span> 
+          <span id="tactical-text">Telemetry indicates high gravitational flux.</span>
+        </div>
+
+        <!-- Choice Action Buttons Container -->
+        <div class="border-t border-cyan-900/60 pt-4">
+          <div class="text-[11px] text-cyan-400/80 uppercase tracking-widest font-hud mb-2.5 flex items-center justify-between">
+            <span>DIRECT PROTOCOL ACTIONS</span>
+            <span class="text-[10px] text-gray-500">HOTKEYS: [A] [B] [C] [D]</span>
+          </div>
+          <div id="choices-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Buttons dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- TERMINAL LOG HISTORY ACCORDION -->
+      <div class="bg-[#070b14]/80 border border-cyan-900/40 rounded-lg p-3 text-xs">
+        <details class="cursor-pointer group">
+          <summary class="font-hud text-[11px] text-gray-400 hover:text-cyan-300 font-semibold flex items-center justify-between select-none">
+            <span>MISSION LOG REPOSITORY (CLICK TO EXPAND CHRONOLOGY)</span>
+            <span class="text-cyan-500 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div id="log-history" class="mt-3 space-y-1.5 max-h-40 overflow-y-auto font-mono text-[11px] text-gray-400 border-t border-cyan-950 pt-2">
+            <p class="text-cyan-600">[SYS_INIT]: Terminal boots online. Welcome Dr. Rowan.</p>
+          </div>
+        </details>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- MISSION DEBRIEFING MODAL (ENDINGS) -->
+  <div id="modal-ending" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-[#091122] border-2 border-cyan-400 p-6 sm:p-8 rounded-xl max-w-xl w-full text-center relative shadow-[0_0_50px_rgba(0,243,255,0.25)] crt">
+      <div id="ending-badge" class="inline-block px-4 py-1.5 rounded-full font-hud font-bold text-xs uppercase tracking-widest mb-4">
+        MISSION TERMINATION
+      </div>
+      <h2 id="ending-title" class="font-hud text-xl sm:text-2xl font-black text-white mb-3 text-glow-cyan">
+        MISSION OUTCOME
+      </h2>
+      <p id="ending-description" class="text-sm text-gray-300 leading-relaxed font-sans mb-6">
+        Summary description of your outcome.
+      </p>
+
+      <div class="grid grid-cols-3 gap-2 bg-[#050914] p-3 rounded-lg border border-cyan-900/50 mb-6 text-xs">
+        <div>
+          <div class="text-gray-500 text-[10px]">HEALTH</div>
+          <div id="end-health" class="font-bold text-emerald-400">100%</div>
+        </div>
+        <div>
+          <div class="text-gray-500 text-[10px]">SHIELDS</div>
+          <div id="end-shields" class="font-bold text-cyan-400">100%</div>
+        </div>
+        <div>
+          <div class="text-gray-500 text-[10px]">INVENTORY</div>
+          <div id="end-items" class="font-bold text-amber-400">2 ITEMS</div>
+        </div>
+      </div>
+
+      <button id="btn-restart-modal" class="w-full py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-black font-hud font-bold tracking-widest rounded-lg transition-all shadow-lg transform hover:-translate-y-0.5">
+        RE-INITIALIZE RECON MISSION
+      </button>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="w-full bg-[#050810] border-t border-cyan-950/60 px-4 py-2 text-center text-[10px] text-gray-600 font-mono z-30">
+    ASTROPHYSICS RESEARCH EXPEDITION • EXPERIMENTAL PROTOCOL SIMULATOR • GEMINI / COPILOT EDITION
+  </footer>
+
+  <script>
+    /* AUDIO SYNTHESIZER (Web Audio API - No external dependencies) */
+    class TerminalAudio {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      toggle() {
+        this.enabled = !this.enabled;
+        return this.enabled;
+      }
+
+      beep(freq = 600, duration = 0.04, type = 'sine', gain = 0.05) {
+        if (!this.enabled) return;
+        this.init();
+        try {
+          const osc = this.ctx.createOscillator();
+          const gainNode = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          gainNode.gain.setValueAtTime(gain, this.ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+          osc.connect(gainNode);
+          gainNode.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch (e) {
+          console.warn("Audio Context init pending user gesture.");
+        }
+      }
+
+      typeClick() {
+        this.beep(850, 0.02, 'triangle', 0.02);
+      }
+
+      alarmBuzz() {
+        if (!this.enabled) return;
+        this.init();
+        try {
+          const osc = this.ctx.createOscillator();
+          const gainNode = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+          osc.frequency.linearRampToValueAtTime(90, this.ctx.currentTime + 0.3);
+          gainNode.gain.setValueAtTime(0.12, this.ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.35);
+          osc.connect(gainNode);
+          gainNode.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.35);
+        } catch (e) {}
+      }
+
+      victoryChime() {
+        if (!this.enabled) return;
+        this.init();
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+          setTimeout(() => this.beep(freq, 0.25, 'sine', 0.1), i * 140);
+        });
+      }
+    }
+
+    const sound = new TerminalAudio();
+
+    /* GAME STATE MANAGEMENT */
+    const gameState = {
+      health: 100,
+      shields: 100,
+      o2: 95,
+      inventory: ["Astro-Scanner"],
+      currentNode: "airlock",
+      gwFrequency: 4.21,
+      anomalyScanned: false,
+      powerRerouted: false,
+      logs: []
+    };
+
+    /* STORY GRAPH ARCHITECTURE */
+    const storyNodes = {
+      airlock: {
+        title: "OUTPOST AIRLOCK - PORT 01",
+        objective: "Enter Kepler-9 and identify core power state.",
+        tactical: "Gravitational sensors observe intermittent distortion spikes nearby.",
+        text: "The hydraulic seals hiss open into vacuum silence. Frozen air crystals swirl through the emergency floodlights of Outpost Kepler-9.\n\nTwenty years of orbital abandonment have left the corridors chilled and dark. Ahead, primary conduits flicker with an unnatural, pulsating violet aura.",
+        choices: [
+          { text: "Advance to Command Bridge [Comm Logs]", node: "bridge", key: "A" },
+          { text: "Descend into Auxiliary Power Engineering", node: "engineering", key: "B" },
+          { text: "Head directly to Cryo-Laboratory", node: "cryo_entry", key: "C" }
+        ]
+      },
+
+      bridge: {
+        title: "CENTRAL COMMAND BRIDGE",
+        objective: "Extract flight telemetry and investigate station shutdown logs.",
+        tactical: "Security credentials detected in primary captain console.",
+        text: "Shattered terminal glass covers the navigation consoles. One primary terminal remains awake, repeating an automated emergency signal:\n\n'ALERT: DARK MATTER INJECTION COILS EXPERIENCING UNCONTROLLED DENSITY ACCRETION.'\n\nYou notice an active Security Keycard resting in the manual lock.",
+        onEnter: (s) => {
+          if (!s.inventory.includes("Security Keycard")) {
+            s.inventory.push("Security Keycard");
+            logSys("ACQUIRED: [Security Keycard] - High clearance access granted.");
+          }
+        },
+        choices: [
+          { text: "Download Black-Box Telemetry Data", node: "bridge_telemetry", key: "A" },
+          { text: "Reroute Secondary Aux Power to Labs", node: "bridge_reroute", key: "B" },
+          { text: "Proceed toward Cryo-Containment", node: "cryo_entry", key: "C" }
+        ]
+      },
+
+      bridge_telemetry: {
+        title: "COMMAND TELEMETRY LOGS",
+        objective: "Utilize telemetry data to calibrate containment coils.",
+        tactical: "Crucial equation recorded: Resonance field phase lock requires 4.2 Tesla.",
+        text: "You download the terminal black box into your Astro-Scanner. The telemetry confirms the truth: the research crew successfully stabilized an artificial micro-singularity, but lost structural containment when backup generators surged.\n\nYou now possess exact mathematical calibration frequencies.",
+        onEnter: (s) => {
+          s.anomalyScanned = true;
+          logSys("DOWNLOAD COMPLETE: Telemetry parameters synchronized.");
+        },
+        choices: [
+          { text: "Reroute Auxiliary Generator to Core", node: "bridge_reroute", key: "A" },
+          { text: "Rush to the Cryo-Laboratory", node: "cryo_entry", key: "B" }
+        ]
+      },
+
+      bridge_reroute: {
+        title: "PRIMARY POWER CONDUIT",
+        objective: "Navigate to the containment room with restored facility power.",
+        tactical: "Shield generators energized to maximum threshold.",
+        text: "You flip the manual bus ties. Heavy high-voltage transformers hum to life through the floor deck plates. Interior corridor lighting snaps to standby cyan.\n\nThe station's deflector shields hum online, adding an extra layer of magnetic shielding around your suit.",
+        onEnter: (s) => {
+          s.powerRerouted = true;
+          s.shields = 100;
+          logSys("POWER REROUTED: Facility auxiliary systems online.");
+        },
+        choices: [
+          { text: "Proceed immediately to Cryo-Laboratory", node: "cryo_entry", key: "A" },
+          { text: "Investigate Engineering Bay First", node: "engineering", key: "B" }
+        ]
+      },
+
+      engineering: {
+        title: "SUB-LEVEL ENGINEERING BAY",
+        objective: "Secure emergency containment gear or energy cells.",
+        tactical: "High-density plasma torch found mounted on charging bracket.",
+        text: "The engineering bay is cavernous and damp. Coolant steam drifts across broken catwalks. A decommissioned service bot holds an intact Magnetic Containment Cell in its clamp.",
+        onEnter: (s) => {
+          if (!s.inventory.includes("Magnetic Cell")) {
+            s.inventory.push("Magnetic Cell");
+            logSys("ACQUIRED: [Magnetic Cell] - Portable high-energy dampener.");
+          }
+        },
+        choices: [
+          { text: "Boost Oxygen Rebreathers with Lab Gas", node: "boost_o2", key: "A" },
+          { text: "Advance through Blast Doors into Cryo-Lab", node: "cryo_entry", key: "B" }
+        ]
+      },
+
+      boost_o2: {
+        title: "COOLANT & OXYGEN DISPENSARY",
+        objective: "Return to the main containment crisis.",
+        tactical: "Vitals maximized. Suit integrity optimal.",
+        text: "You pressurize your secondary reserve tanks using high-grade medical propellant tanks. Your suit pressure stabilizes at maximum capacity.",
+        onEnter: (s) => {
+          s.o2 = 100;
+          s.health = 100;
+          logSys("VITALS RESTORED: Oxygen and suit seals replenished to 100%.");
+        },
+        choices: [
+          { text: "Enter the Cryo-Laboratory", node: "cryo_entry", key: "A" }
+        ]
+      },
+
+      cryo_entry: {
+        title: "CENTRAL CRYO-LABORATORY",
+        objective: "Resolve the escalating gravitational core singularity.",
+        tactical: "WARNING: Singularity chamber magnetic walls collapsing!",
+        text: "You step onto the observation deck. In the center of the vast chamber floats a swirling vortex of deep purple light—a localized dark matter singularity bending illumination around its event horizon.\n\nKlaxons blare: 'CONTAINMENT HYSTERESIS AT 89%. GRAVITATIONAL EXPLOSION IN 40 SECONDS.'",
+        onEnter: (s) => {
+          sound.alarmBuzz();
+          s.gwFrequency = 9.88;
+        },
+        choices: [
+          { text: "Vent Chamber into Deep Space [Requires Keycard]", node: "action_vent", key: "A" },
+          { text: "Manually Recalibrate Magnetic Coils", node: "action_calibrate", key: "B" },
+          { text: "Deploy Magnetic Cell directly into Core", node: "action_cell", key: "C" },
+          { text: "Abandon Mission: Sprint for the Escape Shuttle", node: "action_flee", key: "D" }
+        ]
+      },
+
+      // --- ENDINGS ---
+      action_vent: {
+        title: "CHAMBER VENTILATION TERMINAL",
+        text: "",
+        onEnter: (s) => {
+          if (s.inventory.includes("Security Keycard")) {
+            triggerEnding(
+              "commander",
+              "ENDING 1: TACTICAL CONTAINMENT (SUCCESS)",
+              "You insert the Captain's Keycard and initiate emergency exterior decompression. The blast doors tear open into orbital vacuum, safely ejecting the unstable gravitational vortex into deep space before critical mass. You secure the station's flight recorder and depart as an acclaimed salvage commander."
+            );
+          } else {
+            s.health = 25;
+            s.shields = 0;
+            triggerEnding(
+              "sabotaged",
+              "ENDING: KEYCARD OVERRIDE REJECTED",
+              "Lacking administrative clearance credentials, the terminal denies override access. An uncontrolled gravitational shockwave rips through the observation glass, critically damaging your suit. You are forced to trigger an emergency pod ejection as Kepler-9 detonates."
+            );
+          }
+        }
+      },
+
+      action_calibrate: {
+        title: "MAGNETIC COIL RECALIBRATION",
+        text: "",
+        onEnter: (s) => {
+          if (s.anomalyScanned) {
+            triggerEnding(
+              "pioneer",
+              "ENDING 2: ASTROPHYSICS BREAKTHROUGH (LEGENDARY)",
+              "Using the telemetry data gathered from the bridge logs, you lock the field frequency to exactly 4.2 Tesla. The chaotic dark matter vortex immediately snaps into harmonic stability! You have unlocked humanity's first working dark matter energy generator. You will go down in astrophysics history."
+            );
+          } else {
+            triggerEnding(
+              "lost",
+              "ENDING 3: EVENT HORIZON ACCIDENTAL COLLAPSE",
+              "Without the precise calibration telemetry, you guess the frequency harmonics incorrectly. The singularity undergoes exponential mass inversion, turning into a runaway black hole that swallows Kepler-9 and your shuttle into the eternal void."
+            );
+          }
+        }
+      },
+
+      action_cell: {
+        title: "MAGNETIC DAMPENER INSERTION",
+        text: "",
+        onEnter: (s) => {
+          if (s.inventory.includes("Magnetic Cell")) {
+            triggerEnding(
+              "survivor",
+              "ENDING 4: HARD RESET HERO (VICTORY)",
+              "You hurl the heavy Magnetic Cell into the injection manifold. The high-capacity dampener absorbs the field instability in a blinding cascade of blue Cherenkov radiation. The core powers down safely to cold iron. You saved the station through raw quick thinking!"
+            );
+          } else {
+            triggerEnding(
+              "lost",
+              "ENDING: NO DAMPENING DEVICE",
+              "You reach for your equipment pouch but have no dampener device! The unshielded tidal forces drag you across the deck plates into the singularity vortex."
+            );
+          }
+        }
+      },
+
+      action_flee: {
+        title: "TACTICAL RETREAT",
+        text: "",
+        onEnter: (s) => {
+          triggerEnding(
+            "survivor",
+            "ENDING: NARROW SURVIVAL",
+            "You decouple docking clamps and fire emergency vernier thrusters. From 10 kilometers away, you watch through the viewport as Kepler-9 collapses in a quiet flash of purple gravitational waves. You survived, but the station's secrets are lost forever."
+          );
+        }
+      }
+    };
+
+    /* RADAR CANVAS ANIMATION */
+    const canvas = document.getElementById("radarCanvas");
+    const ctx = canvas.getContext("2d");
+    let angle = 0;
+
+    function renderRadar() {
+      ctx.fillStyle = "rgba(4, 8, 17, 0.15)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = canvas.width / 2 - 4;
+
+      // Draw sweeping beam
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(angle);
+      const gradient = ctx.createLinearGradient(0, 0, radius, 0);
+      gradient.addColorStop(0, "rgba(0, 243, 255, 0.8)");
+      gradient.addColorStop(1, "rgba(0, 243, 255, 0)");
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, radius, 0, Math.PI / 4);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.restore();
+
+      // Draw blips
+      const blips = [
+        { x: centerX + 30, y: centerY - 40, color: "#ffaa00" },
+        { x: centerX - 50, y: centerY + 25, color: "#00f3ff" }
+      ];
+
+      blips.forEach(b => {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = b.color;
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = b.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+
+      angle += 0.03;
+      requestAnimationFrame(renderRadar);
+    }
+    renderRadar();
+
+    /* TYPEWRITER TEXT ENGINE */
+    let typeWriterTimeout = null;
+    let isTyping = false;
+
+    function streamText(text, containerId, onComplete) {
+      const container = document.getElementById(containerId);
+      container.textContent = "";
+      clearTimeout(typeWriterTimeout);
+      isTyping = true;
+      let i = 0;
+
+      function typeNext() {
+        if (i < text.length) {
+          container.textContent += text.charAt(i);
+          if (i % 3 === 0) sound.typeClick();
+          i++;
+          typeWriterTimeout = setTimeout(typeNext, 18);
+        } else {
+          isTyping = false;
+          if (onComplete) onComplete();
+        }
+      }
+      typeNext();
+    }
+
+    function logSys(msg) {
+      const logBox = document.getElementById("log-history");
+      const p = document.createElement("p");
+      p.className = "text-cyan-400";
+      p.textContent = `[${new Date().toLocaleTimeString()}]: ${msg}`;
+      logBox.prepend(p);
+      gameState.logs.push(msg);
+    }
+
+    /* UPDATE HUD METRICS */
+    function updateHUD() {
+      // Health
+      document.getElementById("stat-health-txt").textContent = `${gameState.health}%`;
+      document.getElementById("stat-health-bar").style.width = `${gameState.health}%`;
+      
+      // Shields
+      document.getElementById("stat-shields-txt").textContent = `${gameState.shields}%`;
+      document.getElementById("stat-shields-bar").style.width = `${gameState.shields}%`;
+
+      // O2
+      document.getElementById("stat-o2-txt").textContent = `${gameState.o2}%`;
+      document.getElementById("stat-o2-bar").style.width = `${gameState.o2}%`;
+
+      // GW Freq
+      document.getElementById("gw-value").textContent = `${gameState.gwFrequency.toFixed(2)} Hz`;
+
+      // Inventory
+      const invGrid = document.getElementById("inventory-grid");
+      invGrid.innerHTML = "";
+      gameState.inventory.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "p-2 bg-[#0c162b] border border-cyan-800/60 rounded flex items-center space-x-1.5 text-cyan-200";
+        div.innerHTML = `<span class="text-xs">⚡</span><span class="truncate font-semibold text-[11px]">${item}</span>`;
+        invGrid.appendChild(div);
+      });
+      document.getElementById("inv-count").textContent = `${gameState.inventory.length}/4 SLOTS`;
+    }
+
+    let currentChoices = [];
+
+    function loadScene(nodeKey) {
+      const scene = storyNodes[nodeKey];
+      if (!scene) return;
+
+      gameState.currentNode = nodeKey;
+      if (scene.onEnter) scene.onEnter(gameState);
+      updateHUD();
+
+      // Update location and objective headers
+      document.getElementById("scene-location").textContent = scene.title;
+      if (scene.objective) {
+        document.getElementById("mission-objective").textContent = scene.objective;
+      }
+
+      // Tactical note
+      const tacticalBanner = document.getElementById("tactical-banner");
+      if (scene.tactical) {
+        tacticalBanner.classList.remove("hidden");
+        document.getElementById("tactical-text").textContent = scene.tactical;
+      } else {
+        tacticalBanner.classList.add("hidden");
+      }
+
+      // Clear buttons during typing
+      const choicesContainer = document.getElementById("choices-container");
+      choicesContainer.innerHTML = "";
+      currentChoices = scene.choices || [];
+
+      // Stream Narrative
+      streamText(scene.text, "story-text", () => {
+        renderChoices(currentChoices);
+      });
+    }
+
+    function renderChoices(choices) {
+      const container = document.getElementById("choices-container");
+      container.innerHTML = "";
+      
+      choices.forEach(ch => {
+        const btn = document.createElement("button");
+        btn.className = "w-full text-left p-3 rounded-lg bg-[#0c162c] hover:bg-cyan-950/80 border border-cyan-700/50 hover:border-cyan-400 text-xs text-gray-200 transition-all flex items-center justify-between group shadow cursor-pointer";
+        btn.innerHTML = `
+          <div class="flex items-center space-x-2">
+            <span class="px-1.5 py-0.5 rounded bg-cyan-900/60 text-cyan-300 font-hud font-bold text-[10px] group-hover:bg-cyan-400 group-hover:text-black transition-colors">[${ch.key}]</span>
+            <span class="font-medium group-hover:text-cyan-200">${ch.text}</span>
+          </div>
+          <span class="text-cyan-600 group-hover:text-cyan-300 text-xs">➔</span>
+        `;
+        btn.onclick = () => {
+          sound.beep(750, 0.05, 'square');
+          loadScene(ch.node);
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    /* KEYBOARD HOTKEYS (A, B, C, D) */
+    window.addEventListener("keydown", (e) => {
+      const key = e.key.toUpperCase();
+      const match = currentChoices.find(c => c.key === key);
+      if (match) {
+        sound.beep(750, 0.05, 'square');
+        loadScene(match.node);
+      }
+    });
+
+    /* ENDING MODAL DISPLAY */
+    function triggerEnding(type, title, description) {
+      const modal = document.getElementById("modal-ending");
+      const badge = document.getElementById("ending-badge");
+      const titleEl = document.getElementById("ending-title");
+      const descEl = document.getElementById("ending-description");
+
+      sound.victoryChime();
+
+      if (type === "pioneer") {
+        badge.className = "inline-block px-4 py-1.5 rounded-full font-hud font-bold text-xs uppercase bg-emerald-950 text-emerald-300 border border-emerald-500";
+        badge.textContent = "RANK: CHIEF ASTROPHYSICIST (PIONEER)";
+      } else if (type === "commander") {
+        badge.className = "inline-block px-4 py-1.5 rounded-full font-hud font-bold text-xs uppercase bg-cyan-950 text-cyan-300 border border-cyan-500";
+        badge.textContent = "RANK: MISSION COMMANDER";
+      } else if (type === "lost") {
+        badge.className = "inline-block px-4 py-1.5 rounded-full font-hud font-bold text-xs uppercase bg-red-950 text-red-300 border border-red-500";
+        badge.textContent = "CASUALTY: LOST IN SINGULARITY";
+      } else {
+        badge.className = "inline-block px-4 py-1.5 rounded-full font-hud font-bold text-xs uppercase bg-amber-950 text-amber-300 border border-amber-500";
+        badge.textContent = "SURVIVOR: EXPEDITION RETREAT";
+      }
+
+      titleEl.textContent = title;
+      descEl.textContent = description;
+
+      document.getElementById("end-health").textContent = `${gameState.health}%`;
+      document.getElementById("end-shields").textContent = `${gameState.shields}%`;
+      document.getElementById("end-items").textContent = `${gameState.inventory.length} ITEMS`;
+
+      modal.classList.remove("hidden");
+    }
+
+    function resetGame() {
+      document.getElementById("modal-ending").classList.add("hidden");
+      gameState.health = 100;
+      gameState.shields = 100;
+      gameState.o2 = 95;
+      gameState.inventory = ["Astro-Scanner"];
+      gameState.anomalyScanned = false;
+      gameState.powerRerouted = false;
+      gameState.gwFrequency = 4.21;
+      logSys("SYSTEM REBOOT: Session re-initialized by user.");
+      loadScene("airlock");
+    }
+
+    // Buttons
+    document.getElementById("btn-restart-modal").onclick = resetGame;
+    document.getElementById("btn-restart-top").onclick = resetGame;
+
+    // Audio button toggle
+    const btnAudio = document.getElementById("btn-audio");
+    btnAudio.onclick = () => {
+      const active = sound.toggle();
+      document.getElementById("audio-icon").textContent = active ? "🔊" : "🔇";
+      document.getElementById("audio-label").textContent = active ? "SFX ON" : "SFX OFF";
+    };
+
+    // Stardate real-time counter
+    setInterval(() => {
+      const now = new Date();
+      document.getElementById("terminal-timestamp").textContent = 
+        `STARDATE ${now.getFullYear()}.${now.getMonth() + 1}${now.getDate()} // ${now.toLocaleTimeString()}`;
+    }, 1000);
+
+    // Initial Load
+    window.onload = () => {
+      loadScene("airlock");
+    };
+  </script>
+</body>
+</html>
